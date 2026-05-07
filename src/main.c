@@ -1,12 +1,4 @@
-#include <sys/socket.h>
-#include <sys/epoll.h>
-#include <netinet/in.h>
-#include <stdbool.h>
-#include <string.h>
-#include <strings.h>
-#include <pthread.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include "common.h"
 
 #define ERR_INIT_MUTEX 1
 #define ERR_INIT_SOCKET 2
@@ -41,6 +33,24 @@
 #define ACT_STATUS 0x04
 
 #define UNSET 0xFF
+
+const int ActionSizes[5] = {
+	1,
+	0,
+	2,
+	0,
+	0
+};
+
+const uint8_t OptionRange[5] = {
+	0x01,
+	0x01,
+	0x05,
+	0x05,
+	0x05
+};
+
+int LastActionIndex = sizeof(ActionSizes) / sizeof(ActionSizes[0]) - 1;
 
 int anyPubMagicValue = -2;
 pthread_mutex_t lock;
@@ -188,6 +198,81 @@ void serialize_result_factory(struct SerialResult *result) {
     result->reply = UNSET;
 }
 
+void deserialize(uint8_t buffer[255], struct Message *msg, struct SerialResult *result) {
+    int dataLen = -1;
+    int dataOffset = 3;
+    int *dataSizes = NULL;
+    int dataIndex = 0;
+    int dataSize = 0;
+
+    serialize_result_factory(result);
+    message_reset(msg);
+
+    if(buffer[0] <= LastActionIndex) {
+        msg->action = buffer[0];
+        dataLen = ActionSizes[msg->action];
+    } else {
+        result->reply = 0x02;
+        return;
+    }
+
+    if(buffer[1] > OptionRange[msg->action]) {
+        result->reply = 0x03;
+        return;
+    }
+
+    msg->options = buffer[1];
+    if(dataLen == 0) {
+        if(buffer[2] != 0) result->reply = 0x02;
+        else result->reply = 0x00;
+        return;
+    }
+
+    msg->size = buffer[2];
+    dataSizes = (int*)malloc(sizeof(int)*dataLen);
+
+    for(int i = 3; i < 255; i++) {
+        if(i < msg->size + 3) {
+            free(dataSizes);
+            result->reply = 0x01;
+            return;
+        }
+
+        if(dataIndex == dataLen) {
+            if(dataSize == 1) {
+                free(dataSizes);
+                result->reply = 0x01;
+                return;
+            }
+            break;
+        }
+
+        if(buffer[i] < ' ' || buffer[i] > '~') {
+            free(dataSizes);
+            result->reply = 0x05;
+            return;
+        }
+
+        dataSize++;
+    }
+
+    msg->data = (char**)malloc(sizeof(char*)*dataLen);
+    msg->dataLen = dataLen;
+
+    for(int i = 0; i < dataLen; i++) {
+        msg->data[i] = (char*)malloc(sizeof(char) * dataSizes[i]);
+
+        for(int j = 0; j < dataSizes[i]; j++) 
+            msg->data[i][j] = buffer[j * dataOffset];
+
+        dataOffset += dataSizes[i];
+    }
+
+    result->reply = 0x00;
+    result->size = 3 + msg->size;
+    free(dataSizes);
+}
+
 void* hq_thread(void *threadData) {
     struct PrivateData *data = (struct PrivateData*)threadData;
     uint8_t socketBuffer[255];
@@ -210,11 +295,9 @@ void* hq_thread(void *threadData) {
 
     while(true) {
         eventsReady = epoll_wait(data->epollFd, data->socketEventQueue, MAX_EPOLL_EVENTS, -1);
+
         if(eventsReady == -1)
             pthread_exit(NULL);
-
-        pthread_mutex_lock(&lock);
-        pthread_mutex_unlock(&lock);
 
         for(int i = 0; i < eventsReady; i++) {
             message_reset(&sendMsg);
@@ -245,6 +328,35 @@ void* hq_thread(void *threadData) {
 
                 bzero(&data->socketEvents[clientId], sizeof(struct epoll_event));
                 pthread_mutex_unlock(&data->socketEventsLock);
+
+                continue;
+            }
+
+            pthread_mutex_unlock(&data->socketEventsLock);
+
+            deserialize(socketBuffer, &readMsg, &result);
+            if(result.reply != 0x00)
+                continue;
+
+            switch (readMsg.action)
+            {   
+            case 0x04:
+                if(readMsg.options == 0x05)
+                    if(data->counterTable[clientId] != -1)
+                        continue;
+
+                pthread_mutex_lock(&sharedData->subTableLock);
+                matchEntry.path = NULL;
+                matchEntry.pubFd = 0;
+                watchIndex = find_table_entry(matchEntry, sharedData->subTableSize, sharedData->subTable, MATCH_PUBFD | MATCH_PATH, false);
+
+                if(watchIndex == -1) {
+                    pthread_mutex_unlock(&sharedData->subTableLock);
+                    continue;
+                }
+                data->counterTable[clientId] = 0;
+
+                break;
             }
         }
     }
@@ -276,7 +388,7 @@ int main(int argc, char *argv[]) {
     bzero(&serverAddress, sizeof(serverAddress));
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_addr.s_addr = htonl(INADDR_ANY);
-    serverAddress.sin_port = htonl(PORT);
+    serverAddress.sin_port = htons(PORT);
 
     if(bind(socketFd, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) == -1)
         exit(ERR_SOCKET_BIND);
@@ -294,12 +406,50 @@ int main(int argc, char *argv[]) {
         if(pthread_mutex_init(&threadWorkTable[i].socketEventsLock, NULL) != 0)
             exit(ERR_INIT_MUTEX);
 
-        if(pthread_create(&threadWorkTable[i].id, NULL, NULL, &threadWorkTable[i]) != 0)
+        if(pthread_create(&threadWorkTable[i].id, NULL, hq_thread, &threadWorkTable[i]) != 0)
             exit(ERR_INIT_THREAD);
-
-        pthread_mutex_lock(&lock);
-        pthread_mutex_unlock(&lock);
     }
 
+    if(listen(socketFd, 1))
+        exit(ERR_SOCKET_LISTEN);
+
+    while(true) {
+        if((clientFd = accept(socketFd, (struct sockaddr*)& clientAddress, (socklen_t*)& addressSize)) == -1)
+            exit(ERR_SOCKET_ACCEPT);
+
+        threadId = -1;
+        clientId = -1;
+
+        for(int i = 0; i < MAX_WORKERS; i++) {
+            pthread_mutex_lock(&threadWorkTable[i].socketEventsLock);
+            for(int j = 0; j < MAX_CLIENTS; j++) {
+                if(threadWorkTable[i].socketEvents[j].data.fd == 0) {
+                    clientId = j;
+                    threadId = j;
+                    break;
+                }
+            }
+
+            if(clientId != -1)
+                break;
+            pthread_mutex_unlock(&threadWorkTable[i].socketEventsLock);
+        }
+
+        if(threadId == -1) {
+            close(clientFd);
+            continue;
+        }
+
+        threadWorkTable[threadId].socketEvents[clientId].events = EPOLLIN;
+        threadWorkTable[threadId].socketEvents[clientId].data.fd = clientFd;
+
+        if(epoll_ctl(threadWorkTable[threadId].epollFd, EPOLL_CTL_ADD, clientFd, &threadWorkTable[threadId].socketEvents[clientId]) != 0) {
+            pthread_mutex_unlock(&threadWorkTable[threadId].socketEventsLock);
+            close(clientFd);
+            continue;
+        }
+
+        pthread_mutex_unlock(&threadWorkTable[threadId].socketEventsLock);
+    }
     return 0;
 }

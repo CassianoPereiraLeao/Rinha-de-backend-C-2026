@@ -1,5 +1,5 @@
-COMPILER = GCC
-SOURCE = ./main.c
+COMPILER = gcc
+SOURCE = ./src/*.c
 OUT = ./backend_result.exe
 FLAGS = -Wall
 
