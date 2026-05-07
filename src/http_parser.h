@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common.h"
+#include "structs.h"
 
 #define HASH_TRANSACTION 0x75095723
 #define HASH_AMOUNT 0xF785CE49
@@ -21,3 +22,12 @@
 #define HASH_LAST_TRANSACTION 0xE019966E
 #define HASH_TIMESTAMP 0xB283D523
 #define HASH_KM_FROM_CURRENT 0x4DAAE720
+
+typedef enum {
+    NONE,
+    GET,
+    POST
+} HttpState;
+
+static inline uint8_t http_method(char *buffer);
+void routes_manager(struct Request request, int fd);

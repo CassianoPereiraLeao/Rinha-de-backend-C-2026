@@ -18,3 +18,5 @@ void* arena_memory_alloc(Arena *arena, size_t size) {
 
     return NULL;
 }
+
+void arena_memory_reset(Arena *arena) { arena->current = 0; }

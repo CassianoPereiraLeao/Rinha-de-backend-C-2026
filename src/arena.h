@@ -10,3 +10,4 @@ typedef struct {
 
 Arena* init_arena(size_t arena_capacity);
 void* arena_memory_alloc(Arena *arena, size_t size);
+void arena_memory_reset(Arena *arena);
