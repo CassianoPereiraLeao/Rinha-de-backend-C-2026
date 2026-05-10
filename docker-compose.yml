@@ -1,0 +1,64 @@
+services:
+  api1:
+    build: .
+    image: minha-api-c:latest
+    platform: linux/amd64
+    environment:
+      - UNIX_SOCKET_PATH=/sockets/api1.sock
+    volumes:
+      - sockets-share:/sockets
+    depends_on: []
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    deploy:
+      resources:
+        limits:
+          cpus: "0.40"
+          memory: "145MB"
+
+  api2:
+    build: .
+    image: minha-api-c:latest
+    platform: linux/amd64
+    environment:
+      - UNIX_SOCKET_PATH=/sockets/api2.sock
+    volumes:
+      - sockets-share:/sockets
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    deploy:
+      resources:
+        limits:
+          cpus: "0.40"
+          memory: "145MB"
+
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - sockets-share:/sockets
+    ports:
+      - "9999:9999"
+    depends_on:
+      - api1
+      - api2
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    deploy:
+        resources:
+          limits:
+            cpus: "0.20"
+            memory: "60MB"
+
+volumes:
+  sockets-share:
+    driver: local

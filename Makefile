@@ -1,7 +1,7 @@
-COMPILER = gcc
+COMPILER = gcc -g
 SOURCE = ./src/*.c
-OUT = ./backend_result.exe
-FLAGS = -Wall
+OUT = ./backend_result
+FLAGS = -Wall -O3 -lsqlite3
 
 compile: build run
 
