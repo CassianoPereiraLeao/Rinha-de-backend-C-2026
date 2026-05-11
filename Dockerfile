@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y zlib1g-dev && rm -rf /var/lib/apt/lists
 COPY . .
  
 RUN gcc -O2 -o prepare_refs tools/prepare_refs.c -lz
- 
+
 RUN ./prepare_refs resources/references.json.gz resources/references.bin resources/labels.bin
  
 RUN gcc src/*.c \

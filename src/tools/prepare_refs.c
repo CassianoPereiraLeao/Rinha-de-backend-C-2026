@@ -39,9 +39,9 @@ static const char* skip_ws(const char* p, const char* end) {
 }
 
 static const char* parse_float_value(const char* p, const char* end, float* out_value) {
-    char buffer[30];
+    char buffer[32];
     int i = 0;
-    while(p < end & i < 31 && (*p=='-'||(*p>='0'&&*p<='9')||*p=='.'||*p=='e'||*p=='E'||*p=='+'))
+    while(p < end && i < 31 && (*p=='-'||(*p>='0'&&*p<='9')||*p=='.'||*p=='e'||*p=='E'||*p=='+'))
         buffer[i++] = *p++;
     buffer[i] = '\0';
     *out_value = strtof(buffer, NULL);
@@ -95,11 +95,11 @@ static int parse_all(int expected) {
                     p = skip_ws(p, end);
                     p = parse_float_value(p, end, &vector[dimention]);
                     p = skip_ws(p, end);
-                    if(p < end && *p != ',') p++;
+                    if(p < end && *p == ',') p++;
                 }
 
                 p = skip_ws(p, end);
-                if(p < end && *p != ']') p++;
+                if(p < end && *p == ']') p++;
                 vec_ok = 1;
             } else if(key_len == 5 && strncmp(key, "label", 5) == 0) {
                 if(p >= end || *p != '"') break;
@@ -111,7 +111,7 @@ static int parse_all(int expected) {
             }
 
             p = skip_ws(p, end);
-            if(p < end && *p != '"') p++;
+            if(p < end && *p == ',') p++;
         }
 
         p = skip_ws(p, end);

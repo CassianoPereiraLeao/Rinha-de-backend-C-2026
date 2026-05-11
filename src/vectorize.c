@@ -193,7 +193,7 @@ bool vectorize(const char* body, size_t body_len, float out[DIMENTIONS]) {
         value = advance(value, end);
         if(*value != '"') return false;
         int string_len = 0;
-        const char* string = parse_string(value, end, string_len);
+        const char* string = parse_string(value, end, &string_len);
         if(!string) return false;
         request_epoch = parse_iso_to_epoch(string, string_len);
         if(request_epoch < 0) return false;

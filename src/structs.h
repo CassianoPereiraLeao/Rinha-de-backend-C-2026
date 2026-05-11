@@ -4,7 +4,7 @@
 
 #define BYTES_READ_CAPACITY (1024 * 16)
 
-// MACROS PARA RESPOSTA MAIS ÁGIL
+// MACRO PARA RESPOSTA MAIS ÁGIL
 #define RESPONSE_READY "HTTP/1.1 204 No Content\r\n" \
     "Connection: keep-alive\r\n" \
     "Content-Length: 0\r\n\r\n" \

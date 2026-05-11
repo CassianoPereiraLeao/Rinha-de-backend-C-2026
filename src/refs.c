@@ -25,10 +25,11 @@ int refs_load(const char* refs_path, const char* labels_path) {
     }
 
     const size_t got2 = fread(g_refs.labels, 1, REFS_COUNT, f);
-    if(got2 != expected) {
+    if(got2 != REFS_COUNT) {
         fprintf(stderr, "refs_load: labels leu %zu, esperava %d\n", got2, REFS_COUNT);
         return -1;
     }
+    fclose(f);
 
     g_refs.count = REFS_COUNT;
     g_refs_ready = 1;
